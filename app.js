@@ -866,32 +866,30 @@ function updateClinicalAssessment(detections) {
 // Display detailed detection results
 function displayDetailedResults(detections) {
     const detailsList = document.getElementById('detectionList');
+    // Simplified table: only top-1 species and its confidence per colony
     let html = '<table style="width: 100%; border-collapse: collapse;">';
-    html += '<tr style="background: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Colony #</th><th style="padding: 8px; border: 1px solid #ddd;">Top 3 Species (Confidence)</th></tr>';
+    html += '<tr style="background: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Colony #</th><th style="padding: 8px; border: 1px solid #ddd;">Species</th><th style="padding: 8px; border: 1px solid #ddd;">Confidence</th></tr>';
+
     detections.forEach((detection, index) => {
         const color = CONFIG.COLORS[detection.class_id % CONFIG.COLORS.length];
-        // Always show 3 rows for top-3, even if only 1 or 2 present
-        let top3 = detection.top_classes || [{class_name: detection.class_name, confidence: detection.confidence}];
-        while (top3.length < 3) top3.push({class_name: '-', confidence: 0, class_id: 0});
-        const top3Html = top3.map((c, i) =>
-            `<span style="color:${CONFIG.COLORS[c.class_id % CONFIG.COLORS.length]}; font-weight:${i === 0 ? 'bold' : 'normal'}">${c.class_name} ${c.class_name !== '-' ? `(${(c.confidence * 100).toFixed(1)}%)` : ''}</span>`
-        ).join('<br>');
+        const top = (detection.top_classes && detection.top_classes[0]) ? detection.top_classes[0] : { class_name: detection.class_name, confidence: detection.confidence, class_id: detection.class_id };
         html += `<tr style="border-left: 4px solid ${color};">
             <td style="padding: 8px; border: 1px solid #ddd;">${index + 1}</td>
-            <td style="padding: 8px; border: 1px solid #ddd;">${top3Html}</td>
+            <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${top.class_name}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">${(top.confidence * 100).toFixed(1)}%</td>
         </tr>`;
     });
     html += '</table>';
-    
+
     // Add species summary
     const speciesCounts = {};
     detections.forEach(detection => {
         speciesCounts[detection.class_name] = (speciesCounts[detection.class_name] || 0) + 1;
     });
-    
+
     html += '<div style="margin-top: 20px;"><h5>🦠 Species Distribution:</h5>';
     html += '<div style="display: flex; flex-wrap: wrap; gap: 10px;">';
-    
+
     Object.entries(speciesCounts).forEach(([species, count]) => {
         const classId = CONFIG.CLASS_NAMES.indexOf(species);
         const color = CONFIG.COLORS[classId % CONFIG.COLORS.length];
@@ -899,7 +897,7 @@ function displayDetailedResults(detections) {
             <strong>${species}:</strong> ${count}
         </div>`;
     });
-    
+
     html += '</div></div>';
     detailsList.innerHTML = html;
 }
