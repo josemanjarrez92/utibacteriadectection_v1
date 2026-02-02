@@ -1,0 +1,30 @@
+description: Ultralytics YOLOv12s model trained on data.yaml
+author: Ultralytics
+date: '2026-02-02T17:44:53.331454'
+version: 8.4.10
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: Candida Albicans
+  1: Enterococcus Faecalis
+  2: Escherichia Coli
+  3: Klebsiella Pneumoniae
+  4: Other Organisms
+  5: Pseudomonas Aeruginosa
+  6: Staphylococcus Aureus
+  7: Staphylococcus Epidermidis
+  8: Staphylococcus Saprophyticus
+  9: Streptococcus Agalactiae
+args:
+  batch: 1
+  half: true
+  int8: false
+  nms: true
+channels: 3
+end2end: false
