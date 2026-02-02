@@ -426,7 +426,7 @@ async function processDetections(predictions, imageInfo) {
         // Extract detection data based on format
         let x1, y1, x2, y2, classId, confidence;
         let isValid = false;
-        
+        let topClasses = [];
         if (formatType === 'nms_6') {
             // Format: [x1, y1, x2, y2, confidence, class_id] (corrected!)
             x1 = predictionsData[startIdx];
@@ -435,10 +435,13 @@ async function processDetections(predictions, imageInfo) {
             y2 = predictionsData[startIdx + 3];
             confidence = predictionsData[startIdx + 4];  // Confidence is at position 4
             classId = Math.round(predictionsData[startIdx + 5]);  // Class ID is at position 5
-            
-            // Check if this is a valid detection (non-zero confidence)
             isValid = confidence > 0.001;
-            
+            // Only top-1 available in this format
+            topClasses = [{
+                class_id: classId,
+                class_name: CONFIG.CLASS_NAMES[classId] || `Class_${classId}`,
+                confidence: confidence
+            }];
         } else if (formatType === 'nms_7') {
             // Try common format: [x1, y1, x2, y2, confidence, class_id, valid]
             x1 = predictionsData[startIdx];
@@ -447,47 +450,45 @@ async function processDetections(predictions, imageInfo) {
             y2 = predictionsData[startIdx + 3];
             confidence = predictionsData[startIdx + 4];
             classId = Math.round(predictionsData[startIdx + 5]);
-            
-            // Check validity flag if present
             const validFlag = predictionsData[startIdx + 6];
             isValid = confidence > 0.001 && (validFlag === undefined || validFlag > 0);
-            
+            topClasses = [{
+                class_id: classId,
+                class_name: CONFIG.CLASS_NAMES[classId] || `Class_${classId}`,
+                confidence: confidence
+            }];
         } else {
             // Fall back to raw YOLO processing
             const x_center = predictionsData[startIdx];
             const y_center = predictionsData[startIdx + 1]; 
             const width = predictionsData[startIdx + 2];
             const height = predictionsData[startIdx + 3];
-            
             const objectness_logit = predictionsData[startIdx + 4];
             const objectness = 1 / (1 + Math.exp(-objectness_logit)); // Sigmoid
-            
             if (objectness < 0.01) continue;
-            
-            // Find best class
-            let maxClassProb = 0;
-            let maxClassId = 0;
             const numClasses = outputSize - 5;
-            
+            // Compute all class probabilities
+            let classProbs = [];
             for (let c = 0; c < Math.min(numClasses, CONFIG.CLASS_NAMES.length); c++) {
                 const classLogit = predictionsData[startIdx + 5 + c];
                 const classProb = 1 / (1 + Math.exp(-classLogit)); // Sigmoid
-                
-                if (classProb > maxClassProb) {
-                    maxClassProb = classProb;
-                    maxClassId = c;
-                }
+                classProbs.push({
+                    class_id: c,
+                    class_name: CONFIG.CLASS_NAMES[c] || `Class_${c}`,
+                    confidence: objectness * classProb
+                });
             }
-            
-            confidence = objectness * maxClassProb;
-            classId = maxClassId;
-            
+            // Sort and take top 3
+            classProbs.sort((a, b) => b.confidence - a.confidence);
+            topClasses = classProbs.slice(0, 3);
+            // Use top-1 for main detection
+            classId = topClasses[0].class_id;
+            confidence = topClasses[0].confidence;
             // Convert center format to corner format (in model input space)
             x1 = (x_center - width / 2) * modelInputSize;
             y1 = (y_center - height / 2) * modelInputSize;
             x2 = (x_center + width / 2) * modelInputSize;
             y2 = (y_center + height / 2) * modelInputSize;
-            
             isValid = confidence > CONFIG.CONFIDENCE_THRESHOLD;
         }
         
@@ -584,13 +585,14 @@ async function processDetections(predictions, imageInfo) {
                         x: (scaledX1 + scaledX2) / 2,
                         y: (scaledY1 + scaledY2) / 2
                     },
+                    // New: top-3 class predictions
+                    top_classes: topClasses,
                     // Debug info
                     format_type: formatType,
                     detection_index: i,
                     original_coords: { x1, y1, x2, y2 },
                     scaled_coords: { x1: scaledX1, y1: scaledY1, x2: scaledX2, y2: scaledY2 }
                 };
-                
                 detections.push(detection);
                 detectedClasses.push(classId);
                 validDetections++;
@@ -763,23 +765,23 @@ function setupHoverDetection(canvas) {
         });
         
         if (hoveredDetection) {
-            // Show tooltip
+            // Show tooltip with top-3 predictions
+            const top3 = (hoveredDetection.top_classes || [{class_name: hoveredDetection.class_name, confidence: hoveredDetection.confidence}])
+                .map((c, i) => `<div style=\"color:${CONFIG.COLORS[c.class_id % CONFIG.COLORS.length]}; font-weight:${i === 0 ? 'bold' : 'normal'}\">${c.class_name} (${(c.confidence * 100).toFixed(1)}%)</div>`)
+                .join('');
             tooltip.innerHTML = `
                 <div style="font-weight: bold; color: ${CONFIG.COLORS[hoveredDetection.class_id % CONFIG.COLORS.length]};">
-                    ${hoveredDetection.class_name}
+                    Colony
                 </div>
                 <div style="font-size: 12px; margin-top: 4px;">
-                    Confidence: ${(hoveredDetection.confidence * 100).toFixed(1)}%
+                    ${top3}
                 </div>
             `;
             tooltip.style.display = 'block';
             tooltip.style.left = (event.clientX + 15) + 'px';
             tooltip.style.top = (event.clientY - 10) + 'px';
-            
-            // Change cursor
             canvas.style.cursor = 'pointer';
         } else {
-            // Hide tooltip
             tooltip.style.display = 'none';
             canvas.style.cursor = 'default';
         }
@@ -864,21 +866,21 @@ function updateClinicalAssessment(detections) {
 // Display detailed detection results
 function displayDetailedResults(detections) {
     const detailsList = document.getElementById('detectionList');
-    
     let html = '<table style="width: 100%; border-collapse: collapse;">';
-    html += '<tr style="background: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Colony #</th><th style="padding: 8px; border: 1px solid #ddd;">Species</th><th style="padding: 8px; border: 1px solid #ddd;">Confidence</th><th style="padding: 8px; border: 1px solid #ddd;">Size (px²)</th><th style="padding: 8px; border: 1px solid #ddd;">Position (x, y)</th></tr>';
-    
+    html += '<tr style="background: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Colony #</th><th style="padding: 8px; border: 1px solid #ddd;">Top 3 Species (Confidence)</th></tr>';
     detections.forEach((detection, index) => {
         const color = CONFIG.COLORS[detection.class_id % CONFIG.COLORS.length];
+        // Always show 3 rows for top-3, even if only 1 or 2 present
+        let top3 = detection.top_classes || [{class_name: detection.class_name, confidence: detection.confidence}];
+        while (top3.length < 3) top3.push({class_name: '-', confidence: 0, class_id: 0});
+        const top3Html = top3.map((c, i) =>
+            `<span style="color:${CONFIG.COLORS[c.class_id % CONFIG.COLORS.length]}; font-weight:${i === 0 ? 'bold' : 'normal'}">${c.class_name} ${c.class_name !== '-' ? `(${(c.confidence * 100).toFixed(1)}%)` : ''}</span>`
+        ).join('<br>');
         html += `<tr style="border-left: 4px solid ${color};">
             <td style="padding: 8px; border: 1px solid #ddd;">${index + 1}</td>
-            <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${detection.class_name}</td>
-            <td style="padding: 8px; border: 1px solid #ddd;">${(detection.confidence * 100).toFixed(1)}%</td>
-            <td style="padding: 8px; border: 1px solid #ddd;">${Math.round(detection.area)}</td>
-            <td style="padding: 8px; border: 1px solid #ddd;">(${Math.round(detection.center.x)}, ${Math.round(detection.center.y)})</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">${top3Html}</td>
         </tr>`;
     });
-    
     html += '</table>';
     
     // Add species summary
@@ -970,7 +972,6 @@ function debugTensorFlowJSModel() {
     const maxVal = Math.max(...testData);
     console.log('Tensor value range:', `${minVal.toFixed(3)} to ${maxVal.toFixed(3)}`);
     console.log('Expected range: 0.0 to 1.0');
-    
     testTensor.dispose();
     
     console.log('=== End Debug Info ===');
