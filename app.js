@@ -7,10 +7,10 @@ let currentModel = 'yolo26n'; // Track current model
 
 // Model configurations
 const MODELS = {
-    yolo26n: { path: './models/yolo26n/model.json', name: 'YOLO26n (Fast)' },
-    yolo26s: { path: './models/yolo26s/model.json', name: 'YOLO26s (Balanced)' },
-    yolo26m: { path: './models/yolo26m/model.json', name: 'YOLO26m (Accurate)' },
-    yolo26l: { path: './models/yolo26l/model.json', name: 'YOLO26l (Most Accurate)' }
+    yolo26n: { path: './models/yolo26n/model.json', name: 'YOLO26 - nano' },
+    yolo26s: { path: './models/yolo26s/model.json', name: 'YOLO26 - small' },
+    yolo26m: { path: './models/yolo26m/model.json', name: 'YOLO26 - medium' },
+    yolo26l: { path: './models/yolo26l/model.json', name: 'YOLO26 - large' }
 };
 
 // Base configuration for bacterial detection model
