@@ -48,6 +48,40 @@
             display: none;
         }
         
+        .model-selector {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .model-selector label {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .model-selector select {
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+            cursor: pointer;
+            min-width: 200px;
+        }
+        
+        .model-selector select:hover {
+            border-color: #007bff;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
+        }
+        
+        #modelLoadingStatus {
+            font-size: 12px;
+            color: #666;
+            min-width: 150px;
+        }
+        
         .upload-btn {
             background: #007bff;
             color: white;
@@ -169,6 +203,19 @@
         <div class="upload-section" id="uploadSection">
             <h3>Upload Petri Dish Image</h3>
             <p>Drag and drop an image here, or click to browse</p>
+            
+            <!-- Model Selection Dropdown -->
+            <div class="model-selector">
+                <label for="modelSelect">Select Model:</label>
+                <select id="modelSelect">
+                    <option value="yolo26n" selected>YOLO26 - nano</option>
+                    <option value="yolo26s">YOLO26 - small</option>
+                    <option value="yolo26m">YOLO26 - medium</option>
+                    <option value="yolo26l">YOLO26 - large</option>
+                </select>
+                <span id="modelLoadingStatus"></span>
+            </div>
+            
             <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
                 📁 Choose File
             </button>

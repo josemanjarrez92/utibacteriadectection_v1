@@ -2,10 +2,19 @@
 // Global variables
 let model = null;
 let isModelLoaded = false;
+let currentImageFile = null; // Store the current image file for reprocessing
+let currentModel = 'yolo26n'; // Track current model
 
-// Configuration for bacterial detection model
+// Model configurations
+const MODELS = {
+    yolo26n: { path: './models/yolo26n/model.json', name: 'YOLO26n (Fast)' },
+    yolo26s: { path: './models/yolo26s/model.json', name: 'YOLO26s (Balanced)' },
+    yolo26m: { path: './models/yolo26m/model.json', name: 'YOLO26m (Accurate)' },
+    yolo26l: { path: './models/yolo26l/model.json', name: 'YOLO26l (Most Accurate)' }
+};
+
+// Base configuration for bacterial detection model
 const CONFIG = {
-    MODEL_URL: './models/model.json', // Update this path to your model
     CONFIDENCE_THRESHOLD: 0.25,       // 25% confidence threshold for medical applications
     INPUT_SIZE: 640,                  // YOLO standard input size (adjust based on your export)
     
@@ -87,6 +96,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setupEventListeners() {
     const fileInput = document.getElementById('fileInput');
     const uploadSection = document.getElementById('uploadSection');
+    const modelSelect = document.getElementById('modelSelect');
     
     // File input change
     fileInput.addEventListener('change', handleFileSelect);
@@ -95,19 +105,50 @@ function setupEventListeners() {
     uploadSection.addEventListener('dragover', handleDragOver);
     uploadSection.addEventListener('dragleave', handleDragLeave);
     uploadSection.addEventListener('drop', handleDrop);
+    
+    // Model selection change
+    modelSelect.addEventListener('change', handleModelChange);
+}
+
+// Handle model selection change
+async function handleModelChange(event) {
+    const selectedModel = event.target.value;
+    console.log(`\n📊 ============================================`);
+    console.log(`📊 MODEL CHANGE INITIATED: ${currentModel} → ${selectedModel}`);
+    console.log(`📊 ============================================\n`);
+    
+    currentModel = selectedModel;
+    
+    // Load the new model
+    await loadModel();
+    
+    // If an image is already loaded, reprocess it with the new model
+    if (currentImageFile) {
+        console.log('📸 Reprocessing current image with new model...\n');
+        await processImageFile(currentImageFile);
+    }
 }
 
 // Load the TensorFlow.js model (GraphDef format from Ultralytics)
 async function loadModel() {
-    updateModelStatus('Loading model...', 'info');
+    const modelConfig = MODELS[currentModel];
+    updateModelStatus(`Loading ${modelConfig.name}...`, 'info');
+    
+    const loadStartTime = performance.now();
     
     try {
-        console.log('📥 Loading GraphModel from:', CONFIG.MODEL_URL);
+        console.log(`\n⏱️  MODEL LOADING START: ${new Date().toLocaleTimeString()}`);
+        console.log(`📥 Loading model from: ${modelConfig.path}`);
         
         // Load the GraphModel (for Ultralytics exported models)
-        model = await tf.loadGraphModel(CONFIG.MODEL_URL);
+        model = await tf.loadGraphModel(modelConfig.path);
         
-        console.log('✅ Model loaded successfully');
+        const loadEndTime = performance.now();
+        const loadingTime = loadEndTime - loadStartTime;
+        
+        console.log(`✅ Model loaded successfully`);
+        console.log(`⏱️  MODEL LOADING TIME: ${loadingTime.toFixed(2)}ms (${(loadingTime / 1000).toFixed(3)}s)`);
+        console.log(`⏱️  MODEL LOADING END: ${new Date().toLocaleTimeString()}\n`);
         
         // For GraphModels, we need to inspect the model differently
         console.log('Model signature:', Object.keys(model.modelSignature || {}));
@@ -118,7 +159,7 @@ async function loadModel() {
         await warmUpModel();
         
         isModelLoaded = true;
-        updateModelStatus('Model loaded and ready', 'success');
+        updateModelStatus(`${modelConfig.name} loaded and ready`, 'success');
         
     } catch (error) {
         console.error('❌ Error loading model:', error);
@@ -152,7 +193,7 @@ async function warmUpModel() {
         }
         
         dummyInput.dispose();
-        console.log('✅ Model warmed up successfully');
+        console.log('✅ Model warmed up successfully\n');
     } catch (error) {
         console.error('❌ Model warmup failed:', error);
         dummyInput.dispose();
@@ -220,7 +261,15 @@ async function processImageFile(file) {
         return;
     }
     
-    console.log('📸 Processing image:', file.name);
+    // Store the file for reprocessing when model changes
+    currentImageFile = file;
+    
+    console.log(`\n📸 ============================================`);
+    console.log(`📸 IMAGE PROCESSING START: ${new Date().toLocaleTimeString()}`);
+    console.log(`📸 Processing image: ${file.name}`);
+    console.log(`📸 Using model: ${MODELS[currentModel].name}`);
+    console.log(`📸 ============================================\n`);
+    
     showLoading(true);
     
     try {
@@ -236,13 +285,16 @@ async function processImageFile(file) {
         const endTime = performance.now();
         const processingTime = endTime - startTime;
         
+        console.log(`⏱️  IMAGE PROCESSING TIME: ${processingTime.toFixed(2)}ms (${(processingTime / 1000).toFixed(3)}s)`);
+        console.log(`⏱️  IMAGE PROCESSING END: ${new Date().toLocaleTimeString()}\n`);
+        
         // Display results
         displayResults(detections, processingTime);
         
         // Draw detection boxes
         drawDetections(img, detections);
         
-        console.log('✅ Detection completed successfully');
+        console.log('✅ Detection completed successfully\n');
         
     } catch (error) {
         console.error('❌ Error processing image:', error);
@@ -437,21 +489,6 @@ async function processDetections(predictions, imageInfo) {
             classId = Math.round(predictionsData[startIdx + 5]);  // Class ID is at position 5
             isValid = confidence > 0.001;
             // Only top-1 available in this format
-            topClasses = [{
-                class_id: classId,
-                class_name: CONFIG.CLASS_NAMES[classId] || `Class_${classId}`,
-                confidence: confidence
-            }];
-        } else if (formatType === 'nms_7') {
-            // Try common format: [x1, y1, x2, y2, confidence, class_id, valid]
-            x1 = predictionsData[startIdx];
-            y1 = predictionsData[startIdx + 1];
-            x2 = predictionsData[startIdx + 2];
-            y2 = predictionsData[startIdx + 3];
-            confidence = predictionsData[startIdx + 4];
-            classId = Math.round(predictionsData[startIdx + 5]);
-            const validFlag = predictionsData[startIdx + 6];
-            isValid = confidence > 0.001 && (validFlag === undefined || validFlag > 0);
             topClasses = [{
                 class_id: classId,
                 class_name: CONFIG.CLASS_NAMES[classId] || `Class_${classId}`,
@@ -1159,6 +1196,8 @@ function handleError(error, context) {
 function downloadResults(detections, filename = 'bacterial_detection_results.json') {
     const results = {
         timestamp: new Date().toISOString(),
+        model: currentModel,
+        model_name: MODELS[currentModel].name,
         detections: detections,
         summary: {
             totalColonies: detections.length,
@@ -1182,6 +1221,8 @@ window.debugFunctions = {
     downloadResults: downloadResults,
     getModel: () => model,
     getConfig: () => CONFIG,
+    getCurrentModel: () => currentModel,
+    getAvailableModels: () => MODELS,
     debugModel: debugTensorFlowJSModel,
     
     // Comprehensive output analysis
